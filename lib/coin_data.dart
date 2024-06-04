@@ -33,6 +33,36 @@ class CoinData with ChangeNotifier {
     }
   }
 
+  Future<void> fetchPurchasedTickets() async {
+    try {
+      String? userId = FirebaseAuth.instance.currentUser?.uid;
+
+      if (userId == null) {
+        print("User is not logged in");
+        return;
+      }
+
+      DocumentReference userRef = _firestore.collection('users').doc(userId);
+      DocumentSnapshot docSnapshot = await userRef.get();
+
+      if (docSnapshot.exists) {
+        purchasedTickets.clear();
+        Map<String, dynamic> data = docSnapshot.data() as Map<String, dynamic>;
+
+        if (data['Karnet_1h'] >= 1) purchasedTickets.add('Karnet 1h');
+        if (data['Karnet_4h'] >= 1) purchasedTickets.add('Karnet 4h');
+        if (data['Karnet_8h'] >= 1) purchasedTickets.add('Karnet 8h');
+        if (data['Karnet_Open'] >= 1) purchasedTickets.add('Karnet Open');
+
+        notifyListeners();
+      } else {
+        print("User document does not exist");
+      }
+    } catch (e) {
+      print("Error fetching purchased tickets: $e");
+    }
+  }
+
   Future<void> addCoins(int amount) async {
     try {
       String? userId = FirebaseAuth.instance.currentUser?.uid;

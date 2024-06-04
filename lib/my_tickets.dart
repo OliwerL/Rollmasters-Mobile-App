@@ -12,13 +12,6 @@ class MyTicketsScreen extends StatefulWidget {
 
 class _MyTicketsScreenState extends State<MyTicketsScreen> {
   @override
-  void initState() {
-    super.initState();
-    // Fetch the user's MasterCoins when the screen is initialized
-    Provider.of<CoinData>(context, listen: false).fetchCoins();
-  }
-
-  @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height - 40 - 163;
@@ -68,7 +61,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                           );
                         },
                         child: Text(
-                          'Moje mastercoin: ${coinData.myMastercoin}',
+                          'Moje MasterCoin: ${coinData.myMastercoin}',
                           style: const TextStyle(
                             fontSize: 25,
                             fontWeight: FontWeight.bold,
@@ -113,7 +106,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                               );
                             },
                             child: Text(
-                              'Pokaż QR: ${coinData.purchasedTickets[index]}',
+                              'Wejście: ${coinData.purchasedTickets[index]}',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.white,

@@ -1,4 +1,4 @@
-package com.example.mhapp
+package com.rollmasters.mhapp
 
 import io.flutter.embedding.android.FlutterActivity
 
