@@ -129,6 +129,8 @@ void navigateToAccountSettings(BuildContext context) {
   }
 }
 
+final FirebaseFirestore _db = FirebaseFirestore.instance;
+
 void _showDeleteAccountDialog(BuildContext context) {
   showDialog(
     context: context,
@@ -145,13 +147,12 @@ void _showDeleteAccountDialog(BuildContext context) {
           ),
           TextButton(
             child: Text('Usuń', style: TextStyle(color: Colors.red)),
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
-              _deleteAccount(context);
+              await deleteUserAccount(context);
               Navigator.of(context).pushReplacement(MaterialPageRoute(
                 builder: (context) => LoginScreen(),
               ));
-
             },
           ),
         ],
@@ -160,76 +161,103 @@ void _showDeleteAccountDialog(BuildContext context) {
   );
 }
 
-Future<void> _reauthenticateAndDelete(BuildContext context) async {
+Future<void> deleteUserAccount(BuildContext context) async {
   final Logger log = Logger();
   try {
-    final providerData = FirebaseAuth.instance.currentUser?.providerData.first;
+    final userId = FirebaseAuth.instance.currentUser!.uid;
 
-    log.d('Re-authenticating with provider: ${providerData?.providerId}');
+    // Re-authenticate user
+    await _reauthenticateAndDelete(context);
 
-    if (providerData != null) {
-      if (AppleAuthProvider().providerId == providerData.providerId) {
-        log.d('Using AppleAuthProvider for re-authentication');
-        await FirebaseAuth.instance.currentUser!
-            .reauthenticateWithProvider(AppleAuthProvider());
-      } else if (GoogleAuthProvider().providerId == providerData.providerId) {
-        log.d('Using GoogleAuthProvider for re-authentication');
-        await FirebaseAuth.instance.currentUser!
-            .reauthenticateWithProvider(GoogleAuthProvider());
-      } else {
-        log.e('Unsupported provider: ${providerData.providerId}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Nieobsługiwany dostawca logowania: ${providerData.providerId}')),
-        );
-        return;
-      }
+    // Delete Firestore data
+    await _deleteUserData(userId);
 
-      log.d('Re-authentication successful, attempting to delete user again');
-      await FirebaseAuth.instance.currentUser?.delete();
+    log.d('User document deleted from Firestore');
 
-      log.d('User deletion successful, logging out and navigating to LoginScreen');
-      await FirebaseAuth.instance.signOut();
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (context) => LoginScreen(),
-      ));
-    }
+    // Delete user from Firebase Authentication
+    await FirebaseAuth.instance.currentUser!.delete();
+    log.d('User deleted from Firebase Authentication');
+
   } catch (e) {
-    log.e('Error during re-authentication and deletion: $e');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Wystąpił błąd podczas ponownej autoryzacji: ${e.toString()}')),
-    );
+    log.e(e);
+    // Handle exceptions
   }
 }
 
-Future<void> _deleteAccount(BuildContext context) async {
-  User? user = FirebaseAuth.instance.currentUser;
+Future<void> _deleteUserData(String userId) async {
   final Logger log = Logger();
+  final userDocRef = _db.collection('users').doc(userId);
 
-  if (user != null) {
-    try {
-      log.d('Attempting to delete user: ${user.uid}');
-      await user.delete();
-      log.d('User deletion attempt finished');
-      log.d('Navigating to LoginScreen after deletion');
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (context) => LoginScreen(),
-      ));
-      await FirebaseAuth.instance.signOut();
-    } on FirebaseAuthException catch (e) {
-      log.e('FirebaseAuthException during account deletion: ${e.code}');
-      if (e.code == 'requires-recent-login') {
-        log.d('Re-authentication required, attempting re-authentication');
-        await _reauthenticateAndDelete(context);
+  final doc = await userDocRef.get();
+  if (doc.exists) {
+    log.d('Deleting document: ${doc.id}');
+    await userDocRef.delete();
+    log.d('User document deleted from Firestore');
+  } else {
+    log.d('No user document found for userId: $userId');
+  }
+}
+
+Future<void> _reauthenticateAndDelete(BuildContext context) async {
+  final Logger log = Logger();
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final password = await _showPasswordInputDialog(context);
+      if (password != null && password.isNotEmpty) {
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: password,
+        );
+        await user.reauthenticateWithCredential(credential);
+        log.d('User reauthenticated');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Wystąpił błąd podczas usuwania konta: ${e.message}')),
+        log.e('Password not provided');
+        throw FirebaseAuthException(
+          code: 'password-not-provided',
+          message: 'Password is required for re-authentication',
         );
       }
+    } else {
+      log.e('No user is currently signed in');
+      throw FirebaseAuthException(
+        code: 'no-user',
+        message: 'No user is currently signed in',
+      );
     }
-  } else {
-    log.e('No user found to delete');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Nie udało się uzyskać informacji o użytkowniku.')),
-    );
+  } catch (e) {
+    log.e(e);
+    // Handle exceptions
   }
+}
+
+Future<String?> _showPasswordInputDialog(BuildContext context) async {
+  TextEditingController passwordController = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text('Wymagane jest ponowne podanie hasłą'),
+        content: TextField(
+          controller: passwordController,
+          obscureText: true,
+          decoration: InputDecoration(hintText: 'Password'),
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+          ),
+          TextButton(
+            child: Text('Submit'),
+            onPressed: () {
+              Navigator.of(context).pop(passwordController.text);
+            },
+          ),
+        ],
+      );
+    },
+  );
 }
